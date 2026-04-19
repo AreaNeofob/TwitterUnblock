@@ -3,7 +3,9 @@ const WEB_BEARER_TOKEN = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E
 const USER_BY_REST_ID_QUERY_ID = "CO4_gU4G_MRREoqfiTh6Hg";
 const REQUEST_PAUSE_MS = 150;
 const REQUEST_TIMEOUT_MS = 15000;
+const AUTO_RESUME_ALARM = "autoResumeResolveAccounts";
 let sessionTabId = null;
+let resolveInProgress = false;
 const USER_LOOKUP_FEATURES = {
     hidden_profile_subscriptions_enabled: true,
     profile_label_improvements_pcf_label_in_post_enabled: true,
@@ -43,7 +45,8 @@ function reportResolveProgress(phase, current, total) {
     }).catch(() => {});
 }
 
-function reportPartialAccount(account) {
+async function reportPartialAccount(account) {
+    await persistPartialAccount(account);
     chrome.runtime.sendMessage({
         type: "RESOLVE_PARTIAL_ACCOUNT",
         account
@@ -60,6 +63,69 @@ function makeRateLimitError(waitSeconds) {
     error.code = "RATE_LIMITED";
     error.waitSeconds = waitSeconds;
     return error;
+}
+
+async function getStoredAccounts() {
+    const stored = await chrome.storage.local.get(["accounts"]);
+    return Array.isArray(stored.accounts) ? stored.accounts : [];
+}
+
+async function saveStoredAccounts(accounts) {
+    await chrome.storage.local.set({ accounts });
+}
+
+async function persistPartialAccount(account) {
+    const accounts = await getStoredAccounts();
+    const index = accounts.findIndex(item => String(item.accountId) === String(account.accountId));
+    if (index === -1) {
+        return;
+    }
+
+    accounts[index] = {
+        ...accounts[index],
+        ...account
+    };
+    await saveStoredAccounts(accounts);
+}
+
+async function persistResolvedAccounts(resolvedAccounts) {
+    const byId = new Map(resolvedAccounts.map(account => [String(account.accountId), account]));
+    const accounts = await getStoredAccounts();
+    const updatedAccounts = accounts.map(account => ({
+        ...account,
+        ...(byId.get(String(account.accountId)) || {})
+    }));
+    await saveStoredAccounts(updatedAccounts);
+}
+
+async function getAutoResumeSettings() {
+    const stored = await chrome.storage.local.get(["autoResumeAfterRateLimit", "rateLimitUntil"]);
+    return {
+        enabled: Boolean(stored.autoResumeAfterRateLimit),
+        rateLimitUntil: Number(stored.rateLimitUntil || 0)
+    };
+}
+
+async function setRateLimitUntil(timestamp) {
+    await chrome.storage.local.set({ rateLimitUntil: Number(timestamp || 0) });
+}
+
+async function scheduleAutoResume(waitSeconds) {
+    const until = Date.now() + (waitSeconds * 1000);
+    await setRateLimitUntil(until);
+
+    const settings = await getAutoResumeSettings();
+    if (!settings.enabled) {
+        return;
+    }
+
+    await chrome.alarms.clear(AUTO_RESUME_ALARM);
+    chrome.alarms.create(AUTO_RESUME_ALARM, { when: until });
+}
+
+async function clearAutoResumeSchedule() {
+    await chrome.alarms.clear(AUTO_RESUME_ALARM);
+    await setRateLimitUntil(0);
 }
 
 async function persistSessionTabId(tabId) {
@@ -244,6 +310,7 @@ async function waitForRateLimitOrThrow(result) {
 
     const waitMs = (Number(resetHeader) * 1000) - Date.now();
     const waitSeconds = Math.max(1, Math.ceil(waitMs / 1000));
+    await scheduleAutoResume(waitSeconds);
     reportResolveProgress("rate_limited", 0, 0);
     chrome.runtime.sendMessage({
         type: "RESOLVE_PROGRESS",
@@ -376,7 +443,7 @@ async function fetchUsersLookup(tabId, accountIds, blockedIds) {
             logWorker("User lookup non-OK", `${accountId} status=${result.status}`);
             if (result.status === 404) {
                 missingIds.add(accountId);
-                reportPartialAccount(makeDeletedAccount(accountId));
+                await reportPartialAccount(makeDeletedAccount(accountId));
                 await delay(REQUEST_PAUSE_MS);
                 continue;
             }
@@ -386,7 +453,7 @@ async function fetchUsersLookup(tabId, accountIds, blockedIds) {
                 `Could not look up account details from X (${result.status}).`
             );
             erroredIds.set(accountId, erroredAccount.detail);
-            reportPartialAccount(erroredAccount);
+            await reportPartialAccount(erroredAccount);
             await delay(REQUEST_PAUSE_MS);
             continue;
         }
@@ -397,14 +464,14 @@ async function fetchUsersLookup(tabId, accountIds, blockedIds) {
 
         if (!userResult) {
             missingIds.add(accountId);
-            reportPartialAccount(makeDeletedAccount(accountId));
+            await reportPartialAccount(makeDeletedAccount(accountId));
             await delay(REQUEST_PAUSE_MS);
             continue;
         }
 
         if (userResult.__typename && userResult.__typename !== "User") {
             missingIds.add(accountId);
-            reportPartialAccount(makeDeletedAccount(accountId));
+            await reportPartialAccount(makeDeletedAccount(accountId));
             await delay(REQUEST_PAUSE_MS);
             continue;
         }
@@ -417,7 +484,7 @@ async function fetchUsersLookup(tabId, accountIds, blockedIds) {
             screen_name: legacy.screen_name || ""
         });
 
-        reportPartialAccount(
+        await reportPartialAccount(
             makeResolvedAccount(resolvedId, {
                 name: legacy.name || "",
                 screen_name: legacy.screen_name || ""
@@ -530,6 +597,65 @@ async function resolveAccounts(tabId, accounts) {
     );
 }
 
+async function runResolve(accounts) {
+    if (resolveInProgress) {
+        throw new Error("A resolve run is already in progress.");
+    }
+
+    resolveInProgress = true;
+    await clearAutoResumeSchedule();
+
+    try {
+        const tab = await getSessionTab();
+        if (!tab.id) {
+            throw new Error("Could not access the logged-in X tab.");
+        }
+
+        const session = await checkSession();
+        if (!session.ready) {
+            throw new Error(session.message);
+        }
+
+        const resolvedAccounts = await resolveAccounts(tab.id, accounts);
+        await persistResolvedAccounts(resolvedAccounts);
+        await clearAutoResumeSchedule();
+        return resolvedAccounts;
+    } finally {
+        resolveInProgress = false;
+    }
+}
+
+async function runAutoResumeResolve() {
+    const settings = await getAutoResumeSettings();
+    if (!settings.enabled) {
+        return;
+    }
+
+    const accounts = await getStoredAccounts();
+    const pendingAccounts = accounts
+        .filter(account => !account.resolved)
+        .map(({ accountId, userLink }) => ({ accountId, userLink }));
+
+    if (pendingAccounts.length === 0) {
+        await clearAutoResumeSchedule();
+        return;
+    }
+
+    logWorker("Auto-resuming resolve run", `${pendingAccounts.length} unresolved accounts`);
+    try {
+        await runResolve(pendingAccounts);
+    } catch (error) {
+        logWorker("Auto-resume resolve failed", error.message || String(error));
+        if (error.code !== "RATE_LIMITED") {
+            chrome.runtime.sendMessage({
+                type: "RESOLVE_PROGRESS",
+                phase: "request_error",
+                message: `Auto-resume failed: ${error.message || String(error)}`
+            }).catch(() => {});
+        }
+    }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
         if (message.type === "OPEN_X_TAB") {
@@ -550,18 +676,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         if (message.type === "RESOLVE_ACCOUNTS") {
-            const tab = await getSessionTab();
-            if (!tab.id) {
-                throw new Error("Could not access the logged-in X tab.");
-            }
-
-            const session = await checkSession();
-            if (!session.ready) {
-                throw new Error(session.message);
-            }
-
-            const accounts = await resolveAccounts(tab.id, message.accounts || []);
+            const accounts = await runResolve(message.accounts || []);
             sendResponse({ ok: true, accounts });
+            return;
+        }
+
+        if (message.type === "SET_AUTO_RESUME") {
+            await chrome.storage.local.set({
+                autoResumeAfterRateLimit: Boolean(message.enabled)
+            });
+            chrome.runtime.sendMessage({
+                type: "AUTO_RESUME_SETTING_CHANGED",
+                enabled: Boolean(message.enabled)
+            }).catch(() => {});
+
+            if (!message.enabled) {
+                await chrome.alarms.clear(AUTO_RESUME_ALARM);
+            } else {
+                const settings = await getAutoResumeSettings();
+                if (settings.rateLimitUntil > Date.now()) {
+                    await chrome.alarms.clear(AUTO_RESUME_ALARM);
+                    chrome.alarms.create(AUTO_RESUME_ALARM, { when: settings.rateLimitUntil });
+                }
+            }
+
+            sendResponse({ ok: true });
             return;
         }
 
@@ -600,4 +739,14 @@ chrome.tabs.onRemoved.addListener(tabId => {
     if (tabId === sessionTabId) {
         clearPersistedSessionTabId().catch(() => {});
     }
+});
+
+chrome.alarms.onAlarm.addListener(alarm => {
+    if (alarm.name !== AUTO_RESUME_ALARM) {
+        return;
+    }
+
+    runAutoResumeResolve().catch(error => {
+        logWorker("Auto-resume alarm failed", error.message || String(error));
+    });
 });

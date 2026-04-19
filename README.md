@@ -25,6 +25,7 @@ X exports blocked accounts as IDs in `block.js`. That is useful as raw data, but
 - Filter the list by status
 - Save the currently visible list as a standalone HTML file
 - Resume after X rate limits you instead of starting over
+- Optionally auto-resume after a rate-limit wait ends
 
 ## Who This Is For
 
@@ -121,6 +122,7 @@ Once your export is loaded, the popup shows:
 - a list of accounts from your export
 - a filter dropdown
 - a `Save HTML` button
+- an auto-resume checkbox for rate-limit waits
 
 Typical workflow:
 
@@ -131,8 +133,9 @@ Typical workflow:
 5. Click **Resolve Accounts**.
 6. Watch the **Live Status** panel while the extension works.
 7. Use the filter dropdown to focus on one status at a time.
-8. Click **Unblock** for any account you want to unblock.
-9. Click **Save HTML** if you want an export of the currently displayed rows.
+8. Optional: enable automatic resume after rate limits if you want the extension to continue on its own after the wait period ends.
+9. Click **Unblock** for any account you want to unblock.
+10. Click **Save HTML** if you want an export of the currently displayed rows.
 
 ## What The Statuses Mean
 
@@ -184,6 +187,8 @@ When that happens:
 - already resolved accounts stay saved
 - the next time you click **Resolve Accounts**, the extension continues with unresolved accounts instead of starting over
 
+If you enable the auto-resume checkbox, the extension will also try to continue automatically once the wait period ends, as long as your logged-in X tab is still available.
+
 This is especially useful for large block lists.
 
 ## What Gets Saved Locally
@@ -194,6 +199,7 @@ The extension stores its working data in Chrome extension storage on your comput
 - resolved names and usernames
 - the latest known status for each account
 - the selected filter
+- whether auto-resume after rate limits is enabled
 - the remembered X session/tab state
 
 This is done so you can close and reopen the popup without losing your progress.
@@ -203,7 +209,7 @@ This is done so you can close and reopen the popup without losing your progress.
 - Your `block.js` file is personal data. Do not commit it to a public repository.
 - Exported HTML files can also contain personal block-list information. Treat them as private unless you intentionally want to share them.
 - This extension works through your own logged-in X session. Keep that in mind if other people use the same Chrome profile.
-- The extension uses Chrome permissions for `storage`, `tabs`, and `scripting`, plus access to `x.com` and `twitter.com`, because it needs to read and act within your logged-in X session.
+- The extension uses Chrome permissions for `storage`, `tabs`, `scripting`, and `alarms`, plus access to `x.com` and `twitter.com`, because it needs to store progress, interact with your logged-in X session, and optionally resume after a rate-limit wait ends.
 
 ## Troubleshooting
 
@@ -230,6 +236,8 @@ That means they were in the archive when you downloaded it, but they do not appe
 ### The extension stops after only a few accounts.
 
 Check the **Live Status** panel. If X has rate-limited the session, wait for the countdown and then click **Resolve Accounts** again.
+
+If you enabled the auto-resume checkbox, the extension should instead try again automatically after the cooldown, as long as the logged-in X tab is still available.
 
 ### An account does not unblock when I click the button.
 

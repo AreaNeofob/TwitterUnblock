@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Load a Twitter/X block export, resolve names in your normal X session, and unblock accounts from an extension popup.",
   "permissions": [
+    "alarms",
     "storage",
     "tabs",
     "scripting"

@@ -10,7 +10,8 @@ The format is intentionally simple:
 
 ## Unreleased
 
-- No unreleased changes yet.
+- Added an optional checkbox to automatically resume resolving after an X rate-limit wait ends.
+- Added background auto-resume scheduling so resolving can continue without a manual click after the cooldown.
 
 ## 1.0.0 - 2026-04-19
 

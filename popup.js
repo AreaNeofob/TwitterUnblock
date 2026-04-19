@@ -6,7 +6,8 @@ const state = {
     progressTotal: 0,
     activeFilter: "all",
     sessionMessage: "No X tab checked yet.",
-    rateLimitUntil: 0
+    rateLimitUntil: 0,
+    autoResumeAfterRateLimit: false
 };
 
 const fileInput = document.getElementById("fileInput");
@@ -27,6 +28,7 @@ const liveStatus = document.getElementById("liveStatus");
 const filterBar = document.getElementById("filterBar");
 const filterSelect = document.getElementById("filterSelect");
 const saveHtmlBtn = document.getElementById("saveHtmlBtn");
+const autoResumeCheckbox = document.getElementById("autoResumeCheckbox");
 let rateLimitTimerId = null;
 
 function escapeHtml(value) {
@@ -62,18 +64,28 @@ function stopRateLimitCountdown() {
         rateLimitTimerId = null;
     }
     state.rateLimitUntil = 0;
+    saveAutoResumeState().catch(() => {});
 }
 
 function startRateLimitCountdown(waitSeconds) {
-    stopRateLimitCountdown();
+    if (rateLimitTimerId) {
+        clearInterval(rateLimitTimerId);
+        rateLimitTimerId = null;
+    }
     state.rateLimitUntil = Date.now() + (waitSeconds * 1000);
+    saveAutoResumeState().catch(() => {});
 
     const updateCountdown = () => {
         const secondsLeft = Math.max(0, Math.ceil((state.rateLimitUntil - Date.now()) / 1000));
-        setLiveStatus(`Rate limited by X. You can try again in ${secondsLeft}s.`);
+        const autoResumeSuffix = state.autoResumeAfterRateLimit ? " Auto-resume is enabled." : "";
+        setLiveStatus(`Rate limited by X. You can try again in ${secondsLeft}s.${autoResumeSuffix}`);
         if (secondsLeft <= 0) {
             stopRateLimitCountdown();
-            setLiveStatus("Rate-limit wait is over. You can try Resolve Accounts again.");
+            setLiveStatus(
+                state.autoResumeAfterRateLimit
+                    ? "Rate-limit wait is over. The extension will try to resume automatically."
+                    : "Rate-limit wait is over. You can try Resolve Accounts again."
+            );
         }
     };
 
@@ -132,6 +144,10 @@ function getVisibleAccounts() {
 
 function updateFilterUi() {
     filterSelect.value = state.activeFilter;
+}
+
+function updateAutoResumeUi() {
+    autoResumeCheckbox.checked = state.autoResumeAfterRateLimit;
 }
 
 function filterLabel(filterValue) {
@@ -245,6 +261,7 @@ function renderList() {
     updateSummary();
     updateSessionUi();
     updateFilterUi();
+    updateAutoResumeUi();
 
     const visibleAccounts = getVisibleAccounts();
 
@@ -344,12 +361,26 @@ function parseExport(content) {
 }
 
 async function restoreState() {
-    const stored = await chrome.storage.local.get(["accounts", "sessionReady", "sessionMessage", "activeFilter"]);
+    const stored = await chrome.storage.local.get([
+        "accounts",
+        "sessionReady",
+        "sessionMessage",
+        "activeFilter",
+        "rateLimitUntil",
+        "autoResumeAfterRateLimit"
+    ]);
     state.accounts = Array.isArray(stored.accounts) ? stored.accounts : [];
     state.sessionReady = Boolean(stored.sessionReady);
     state.sessionMessage = stored.sessionMessage || "No X tab checked yet.";
     state.activeFilter = typeof stored.activeFilter === "string" ? stored.activeFilter : "all";
+    state.rateLimitUntil = Number(stored.rateLimitUntil || 0);
+    state.autoResumeAfterRateLimit = Boolean(stored.autoResumeAfterRateLimit);
     sessionMessage.textContent = state.sessionMessage;
+    if (state.rateLimitUntil > Date.now()) {
+        startRateLimitCountdown(Math.ceil((state.rateLimitUntil - Date.now()) / 1000));
+    } else {
+        stopRateLimitCountdown();
+    }
     renderList();
 }
 
@@ -367,6 +398,13 @@ async function saveSessionState() {
 async function saveFilterState() {
     await chrome.storage.local.set({
         activeFilter: state.activeFilter
+    });
+}
+
+async function saveAutoResumeState() {
+    await chrome.storage.local.set({
+        autoResumeAfterRateLimit: state.autoResumeAfterRateLimit,
+        rateLimitUntil: state.rateLimitUntil || 0
     });
 }
 
@@ -529,6 +567,21 @@ filterSelect.addEventListener("change", event => {
     renderList();
 });
 
+autoResumeCheckbox.addEventListener("change", async event => {
+    state.autoResumeAfterRateLimit = Boolean(event.target.checked);
+    await saveAutoResumeState().catch(() => {});
+    try {
+        await callWorker("SET_AUTO_RESUME", { enabled: state.autoResumeAfterRateLimit });
+    } catch (error) {
+        setBanner(error.message, true);
+    }
+    if (state.rateLimitUntil > Date.now()) {
+        startRateLimitCountdown(Math.ceil((state.rateLimitUntil - Date.now()) / 1000));
+    } else {
+        renderList();
+    }
+});
+
 saveHtmlBtn.addEventListener("click", saveVisibleAccountsAsHtml);
 
 chrome.runtime.onMessage.addListener(message => {
@@ -570,6 +623,16 @@ chrome.runtime.onMessage.addListener(message => {
     }
 
     applyPartialAccount(message.account);
+});
+
+chrome.runtime.onMessage.addListener(message => {
+    if (message.type !== "AUTO_RESUME_SETTING_CHANGED") {
+        return;
+    }
+
+    state.autoResumeAfterRateLimit = Boolean(message.enabled);
+    saveAutoResumeState().catch(() => {});
+    renderList();
 });
 
 setLiveStatus("Idle.");
