@@ -274,3 +274,7 @@ If you also want to remove your local data:
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a human-readable summary of project changes.
