@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X Block Manager</title>
+    <style>
+        :root {
+            --bg: #eff5f6;
+            --panel: #ffffff;
+            --text: #102028;
+            --muted: #5d6d75;
+            --accent: #0f766e;
+            --accent-strong: #115e59;
+            --danger: #c2410c;
+            --danger-strong: #9a3412;
+            --line: rgba(16, 32, 40, 0.1);
+            --shadow: 0 18px 42px rgba(16, 32, 40, 0.14);
+            --deleted: #b42318;
+            --deleted-bg: #fef3f2;
+            --blocked: #0c4a6e;
+            --blocked-bg: #e0f2fe;
+            --unblocked: #166534;
+            --unblocked-bg: #f0fdf4;
+            --error: #92400e;
+            --error-bg: #fff7ed;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            width: 440px;
+            min-height: 620px;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 28%),
+                linear-gradient(180deg, #f8fbfc 0%, var(--bg) 100%);
+        }
+
+        .shell {
+            padding: 18px;
+        }
+
+        .hero {
+            margin-bottom: 16px;
+        }
+
+        .eyebrow {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(15, 118, 110, 0.12);
+            color: var(--accent-strong);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 10px 0 8px;
+            font-size: 28px;
+            line-height: 0.96;
+            letter-spacing: -0.04em;
+        }
+
+        .intro {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.45;
+            font-size: 14px;
+        }
+
+        .panel {
+            margin-bottom: 14px;
+            padding: 16px;
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: var(--shadow);
+        }
+
+        .panel h2 {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+
+        .panel p {
+            margin: 0 0 12px;
+            color: var(--muted);
+            line-height: 1.42;
+            font-size: 13px;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            color: var(--muted);
+        }
+
+        input[type="file"]::file-selector-button,
+        .btn {
+            appearance: none;
+            border: none;
+            border-radius: 999px;
+            padding: 10px 14px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+        }
+
+        input[type="file"]::file-selector-button,
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--text);
+            border: 1px solid var(--line);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn:hover,
+        input[type="file"]::file-selector-button:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .message {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .banner {
+            margin-bottom: 12px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: #fff8db;
+            color: #694100;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .banner.error {
+            background: #fef3f2;
+            color: #b42318;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: white;
+            font-size: 12px;
+        }
+
+        .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #d92d20;
+        }
+
+        .dot.ready {
+            background: #16a34a;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+
+        .stat {
+            padding: 12px;
+            border-radius: 16px;
+            background: rgba(15, 118, 110, 0.06);
+        }
+
+        .stat strong {
+            display: block;
+            font-size: 22px;
+            letter-spacing: -0.03em;
+        }
+
+        .stat span {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .list {
+            display: grid;
+            gap: 10px;
+            max-height: 300px;
+            overflow: auto;
+        }
+
+        .item {
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: white;
+        }
+
+        .item-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: start;
+        }
+
+        .name {
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .username {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .account-id {
+            margin-top: 6px;
+            color: var(--muted);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .tag-blocked {
+            background: var(--blocked-bg);
+            color: var(--blocked);
+        }
+
+        .tag-unblocked {
+            background: var(--unblocked-bg);
+            color: var(--unblocked);
+        }
+
+        .tag-deleted {
+            background: var(--deleted-bg);
+            color: var(--deleted);
+        }
+
+        .tag-error {
+            background: var(--error-bg);
+            color: var(--error);
+        }
+
+        .item-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .item-actions a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 9px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: white;
+        }
+
+        .empty {
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px dashed var(--line);
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+            background: rgba(255, 255, 255, 0.6);
+        }
+
+        .filter-select {
+            flex: 1 1 220px;
+            min-width: 180px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: white;
+            color: var(--text);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <div class="eyebrow">Browser Extension</div>
+            <h1>Use your real X session.</h1>
+            <p class="intro">
+                Load your exported <strong>block.js</strong>, then let the extension resolve names and unblock accounts
+                inside your normal logged-in X browser session.
+            </p>
+        </section>
+
+        <div id="banner" hidden></div>
+
+        <section class="panel">
+            <h2>1. Session</h2>
+            <p>Open or reuse an X tab where you are already logged in. The extension will use that session to make direct X requests in batches, so it can resolve accounts without reloading profile pages.</p>
+            <div class="actions">
+                <button id="openXBtn" class="btn btn-primary">Open X Tab</button>
+                <button id="checkSessionBtn" class="btn btn-secondary">Check X Session</button>
+            </div>
+            <div id="sessionMessage" class="message">No X tab checked yet.</div>
+        </section>
+
+        <section class="panel">
+            <h2>2. Load export</h2>
+            <p>Choose the original <strong>block.js</strong> file from your Twitter/X export.</p>
+            <input type="file" id="fileInput" accept=".js">
+            <div class="actions">
+                <button id="resolveBtn" class="btn btn-primary" disabled>Resolve Accounts</button>
+                <button id="resetBtn" class="btn btn-secondary">Clear Loaded Data</button>
+            </div>
+            <div id="fileMessage" class="message">No export loaded.</div>
+        </section>
+
+        <section class="status-bar">
+            <div class="pill"><span id="sessionDot" class="dot"></span><span id="sessionState">Session unchecked</span></div>
+            <div class="pill"><strong id="loadedCount">0</strong>&nbsp;loaded</div>
+            <div class="pill"><strong id="resolvedCount">0</strong>&nbsp;resolved</div>
+        </section>
+
+        <section class="panel">
+            <h2>Live Status</h2>
+            <p id="liveStatus">Idle.</p>
+        </section>
+
+        <section class="summary" id="summary">
+            <div class="stat"><strong>0</strong><span>Blocked</span></div>
+            <div class="stat"><strong>0</strong><span>Already unblocked</span></div>
+            <div class="stat"><strong>0</strong><span>Deleted</span></div>
+            <div class="stat"><strong>0</strong><span>Errors</span></div>
+        </section>
+
+        <section class="filter-bar" id="filterBar">
+            <select id="filterSelect" class="filter-select" aria-label="Filter accounts by status">
+                <option value="all">All</option>
+                <option value="blocked">Currently blocked</option>
+                <option value="already_unblocked">Already unblocked</option>
+                <option value="deleted">ACCOUNT DELETED</option>
+            </select>
+            <button id="saveHtmlBtn" class="btn btn-secondary">Save HTML</button>
+        </section>
+
+        <section class="list" id="list">
+            <div class="empty">Load your export, open an X tab where you are logged in, and click <strong>Resolve Accounts</strong>. The extension will batch the checks through your logged-in X session without reloading profile pages.</div>
+        </section>
+    </main>
+
+    <script src="popup.js"></script>
+</body>
+</html>

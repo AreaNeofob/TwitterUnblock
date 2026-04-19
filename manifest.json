@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "X Block Manager",
+  "version": "1.0.0",
+  "description": "Load a Twitter/X block export, resolve names in your normal X session, and unblock accounts from an extension popup.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*"
+  ],
+  "action": {
+    "default_title": "X Block Manager",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  }
+}

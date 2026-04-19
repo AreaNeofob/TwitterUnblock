@@ -1,0 +1,5 @@
+.DS_Store
+node_modules/
+.x-session/
+block.js
+x-block-manager-*.html
