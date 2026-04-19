@@ -12,6 +12,10 @@ The format is intentionally simple:
 
 Currently no unreleased changes.
 
+## 1.0.3 - 2026-04-19
+
+- Improved unblock behavior so a successful click updates the row to `Already unblocked` immediately instead of sometimes needing repeated clicks.
+
 ## 1.0.2 - 2026-04-19
 
 - Fixed a live-status bug where `Finalizing results…` could remain visible after an auto-resumed resolve had actually finished.

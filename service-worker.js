@@ -411,6 +411,25 @@ function makeResolvedAccount(accountId, user, blockedIds) {
     };
 }
 
+function makeOptimisticUnblockedAccount(account) {
+    const accountId = String(account.accountId);
+    const username = account.username || "";
+
+    return {
+        accountId,
+        displayName: account.displayName || accountId,
+        username,
+        profileUrl: account.profileUrl || (
+            username
+                ? `https://x.com/${encodeURIComponent(username)}`
+                : `https://x.com/i/user/${encodeURIComponent(accountId)}`
+        ),
+        status: "already_unblocked",
+        detail: "Already unblocked",
+        resolved: true
+    };
+}
+
 async function fetchUsersLookup(tabId, accountIds, blockedIds) {
     const usersById = new Map();
     const missingIds = new Set();
@@ -725,8 +744,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
 
             await unblockById(tab.id, message.accountId);
-            const refreshed = await resolveAccounts(tab.id, [{ accountId: message.accountId }]);
-            sendResponse({ ok: true, account: refreshed[0] });
+            const storedAccounts = await getStoredAccounts();
+            const currentAccount = storedAccounts.find(account => String(account.accountId) === String(message.accountId));
+            const updatedAccount = makeOptimisticUnblockedAccount(
+                currentAccount || { accountId: String(message.accountId) }
+            );
+            await persistPartialAccount(updatedAccount);
+            sendResponse({ ok: true, account: updatedAccount });
             return;
         }
 
