@@ -45,6 +45,14 @@ function reportResolveProgress(phase, current, total) {
     }).catch(() => {});
 }
 
+function reportResolveCompleted(resolvedCount, autoResumed = false) {
+    chrome.runtime.sendMessage({
+        type: "RESOLVE_COMPLETED",
+        resolvedCount,
+        autoResumed
+    }).catch(() => {});
+}
+
 async function reportPartialAccount(account) {
     await persistPartialAccount(account);
     chrome.runtime.sendMessage({
@@ -597,7 +605,7 @@ async function resolveAccounts(tabId, accounts) {
     );
 }
 
-async function runResolve(accounts) {
+async function runResolve(accounts, autoResumed = false) {
     if (resolveInProgress) {
         throw new Error("A resolve run is already in progress.");
     }
@@ -619,6 +627,7 @@ async function runResolve(accounts) {
         const resolvedAccounts = await resolveAccounts(tab.id, accounts);
         await persistResolvedAccounts(resolvedAccounts);
         await clearAutoResumeSchedule();
+        reportResolveCompleted(resolvedAccounts.length, autoResumed);
         return resolvedAccounts;
     } finally {
         resolveInProgress = false;
@@ -643,7 +652,7 @@ async function runAutoResumeResolve() {
 
     logWorker("Auto-resuming resolve run", `${pendingAccounts.length} unresolved accounts`);
     try {
-        await runResolve(pendingAccounts);
+        await runResolve(pendingAccounts, true);
     } catch (error) {
         logWorker("Auto-resume resolve failed", error.message || String(error));
         if (error.code !== "RATE_LIMITED") {

@@ -435,7 +435,6 @@ async function resolveAccounts() {
 
     const pendingAccounts = state.accounts.filter(account => !account.resolved);
     if (pendingAccounts.length === 0) {
-        fileMessage.textContent = "All accounts are already resolved. Clear the loaded data if you want to start over.";
         setLiveStatus("Nothing to do. All loaded accounts already have saved results.");
         return;
     }
@@ -449,7 +448,6 @@ async function resolveAccounts() {
     updateSessionUi();
     updateCounts();
     setBusy(resolveBtn, "Resolving…", true);
-    fileMessage.textContent = `Starting account checks for ${pendingAccounts.length} unresolved accounts…`;
 
     try {
         const response = await callWorker("RESOLVE_ACCOUNTS", {
@@ -461,11 +459,9 @@ async function resolveAccounts() {
             ...(byId.get(account.accountId) || {})
         }));
         await saveAccounts();
-        fileMessage.textContent = `Resolved ${response.accounts.length} accounts.`;
         setLiveStatus(`Finished. Resolved ${response.accounts.length} accounts.`);
         renderList();
     } catch (error) {
-        fileMessage.textContent = error.message;
         setLiveStatus(`Stopped: ${error.message}`);
         setBanner(error.message, true);
     } finally {
@@ -594,15 +590,12 @@ chrome.runtime.onMessage.addListener(message => {
 
     if (message.phase === "blocked_ids") {
         stopRateLimitCountdown();
-        fileMessage.textContent = "Loading your current blocked-account IDs from X…";
         setLiveStatus("Loading blocked-account IDs from X…");
     } else if (message.phase === "lookup") {
         stopRateLimitCountdown();
-        fileMessage.textContent = `Resolving account ${state.progressCurrent} of ${state.progressTotal}…`;
         setLiveStatus(`Resolving account ${state.progressCurrent} of ${state.progressTotal}…`);
     } else if (message.phase === "finalizing") {
         stopRateLimitCountdown();
-        fileMessage.textContent = "Finalizing results…";
         setLiveStatus("Finalizing results…");
     } else if (message.phase === "rate_limited") {
         startRateLimitCountdown(Number(message.waitSeconds || 0));
@@ -633,6 +626,19 @@ chrome.runtime.onMessage.addListener(message => {
     state.autoResumeAfterRateLimit = Boolean(message.enabled);
     saveAutoResumeState().catch(() => {});
     renderList();
+});
+
+chrome.runtime.onMessage.addListener(message => {
+    if (message.type !== "RESOLVE_COMPLETED") {
+        return;
+    }
+
+    const resolvedCount = Number(message.resolvedCount || 0);
+    setLiveStatus(
+        message.autoResumed
+            ? `Finished automatically. Resolved ${resolvedCount} accounts.`
+            : `Finished. Resolved ${resolvedCount} accounts.`
+    );
 });
 
 setLiveStatus("Idle.");

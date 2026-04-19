@@ -10,7 +10,11 @@ The format is intentionally simple:
 
 ## Unreleased
 
-- No unreleased changes yet.
+Currently no unreleased changes.
+
+## 1.0.2 - 2026-04-19
+
+- Fixed a live-status bug where `Finalizing results…` could remain visible after an auto-resumed resolve had actually finished.
 
 ## 1.0.1 - 2026-04-19
 
